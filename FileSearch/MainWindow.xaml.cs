@@ -3,20 +3,13 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 using System.Windows.Forms;
 using System.Text.RegularExpressions;
-using System.Security.AccessControl;
 using System.Threading;
 
 namespace FileSearch
@@ -362,39 +355,36 @@ namespace FileSearch
         private void FindFile(string driveName)
         {
             string[] fileFullNames = this.cache.Where(x => x.Key == driveName).FirstOrDefault().Value;
-            try
+            if (!string.IsNullOrEmpty(this.rootDirectory))
             {
-                foreach (var fileFullName in fileFullNames)
+                // 指定根目录时进行过滤
+                fileFullNames = fileFullNames.Where(x=>x.StartsWith(this.rootDirectory)).ToArray();
+            }
+            foreach (var fileFullName in fileFullNames)
+            {
+                string[] fileNameOrFolderNames = fileFullName.Split('\\').Skip(1).ToArray();
+                foreach (string name in fileNameOrFolderNames)
                 {
-                    string[] fileNameOrFolderNames = fileFullName.Split('\\').Skip(1).ToArray();
-                    foreach (string name in fileNameOrFolderNames)
+                    if (this.IsMatch(name))
                     {
-                        if (this.IsMatch(name))
+                        string[] nodeNames;
+                        if (string.IsNullOrEmpty(this.rootDirectory))
                         {
-                            string[] nodeNames;
-                            if (string.IsNullOrEmpty(this.rootDirectory))
-                            {
-                                nodeNames = fileFullName.Split('\\');
-                            }
-                            else
-                            {
-                                nodeNames = fileFullName.Replace(this.rootDirectory, "").Split('\\');
-                            }
-                            this.CreatNodes(nodeNames, this.root, this.rootDirectory);
-                            // 若只查找一个文件则结束查询 
-                            if (this.isOnlyFirst)
-                            {
-                                this.taskHasBeenFinished = true;
-                                return;
-                            };
+                            nodeNames = fileFullName.Split('\\');
                         }
+                        else
+                        {
+                            nodeNames = fileFullName.Replace(this.rootDirectory, "").Split('\\');
+                        }
+                        this.CreatNodes(nodeNames, this.root, this.rootDirectory);
+                        // 若只查找一个文件则结束查询 
+                        if (this.isOnlyFirst)
+                        {
+                            this.taskHasBeenFinished = true;
+                            return;
+                        };
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                // 调试用
-                var message = ex.Message;
             }
         }
 
