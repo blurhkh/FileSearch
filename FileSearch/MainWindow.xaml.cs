@@ -346,17 +346,7 @@ namespace FileSearch
         private void menuItemOpenFile_Click(object sender, RoutedEventArgs e)
         {
             string fullName = (this.treeView.SelectedItem as Node).FullName;
-            System.Diagnostics.Process.Start("Explorer.exe", fullName);
-        }
-
-        /// <summary>
-        /// 双击节点打开
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void TreeViewItem_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-        {
-            this.menuItemOpenFile_Click(null, null);
+            System.Diagnostics.Process.Start(fullName);
         }
         #endregion
 
