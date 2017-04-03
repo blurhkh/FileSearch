@@ -67,6 +67,7 @@
                     <DockPanel Grid.Row="2" Margin="0,5,0,0">
                         <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
                             <CheckBox Margin="5" Name="ckbFolder" Click="ckbFolder_Click">指定根目录</CheckBox>
+                            <CheckBox Margin="5" Name="ckbOnlyFolder" ToolTip="默认显示对象文件夹内所有文件夹及文件">仅查找文件夹</CheckBox>
                             <CheckBox Margin="5" Name="ckbOnlyFirst">仅第一件</CheckBox>
                             <CheckBox Margin="5" Name="ckbUseReg">正则表达式</CheckBox>
                             <CheckBox Margin="5" Name="ckbIgnoreCase">忽略大小写</CheckBox>

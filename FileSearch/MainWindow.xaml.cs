@@ -30,6 +30,11 @@ namespace FileSearch
         private string rootDirectory;
 
         /// <summary>
+        /// 是否只显示文件夹
+        /// </summary>
+        private bool isOnlyFolder;
+
+        /// <summary>
         /// 是否仅第一个
         /// </summary>
         private bool isOnlyFirst;
@@ -70,9 +75,14 @@ namespace FileSearch
         private Thread thread;
 
         /// <summary>
-        /// 目录缓存
+        /// 文件完整路径缓存
         /// </summary>
-        private Dictionary<string, string[]> cache;
+        private Dictionary<string, string[]> fileCache;
+
+        /// <summary>
+        /// 文件夹完整路径缓存
+        /// </summary>
+        private Dictionary<string, string[]> folderCache;
 
         /// <summary>
         /// 驱动器
@@ -89,7 +99,9 @@ namespace FileSearch
             // 只初期化一次，下次可从缓存中读取
             this.associatedIcons = new List<AssociatedIcon>();
 
-            this.cache = new Dictionary<string, string[]>();
+            this.fileCache = new Dictionary<string, string[]>();
+
+            this.folderCache = new Dictionary<string, string[]>();
 
             this.thread = new Thread(() =>
             {
@@ -100,7 +112,10 @@ namespace FileSearch
                        .Select(x => x.Name).ToArray();
                 foreach (string driveName in driveNames)
                 {
-                    this.cache.Add(driveName, mftScanner.EnumerateFiles(driveName).ToArray());
+                    string[] fileFullNames = mftScanner.EnumerateFiles(driveName).ToArray();
+                    this.fileCache.Add(driveName, fileFullNames);
+                    string[] folderFullNames = fileFullNames.Select(x => Path.GetDirectoryName(x)).Distinct().ToArray();
+                    this.folderCache.Add(driveName, folderFullNames);
                 }
                 this.thread.Abort();
                 this.thread = null;
@@ -161,6 +176,7 @@ namespace FileSearch
             this.treeViewContextMenu.IsOpen = false;
 
             // 为避免跨线程访问
+            this.isOnlyFolder = this.ckbOnlyFolder.IsChecked.Value;
             this.isOnlyFirst = this.ckbOnlyFirst.IsChecked.Value;
             this.isUseReg = this.ckbUseReg.IsChecked.Value;
             this.isIgnoreCase = this.ckbIgnoreCase.IsChecked.Value;
@@ -210,44 +226,39 @@ namespace FileSearch
             this.StartSeach();
             this.rootDirectory = this.txtDirectory.Text.Trim();
 
-            // 防止线程过早开启
-            // 注意，这个时候也有可能只是完成了C盘或者什么都没完成
-            lock (this.cache)
+            // 如果上一个线程尚未关闭
+            if (this.thread != null)
             {
-                // 如果上一个线程尚未关闭
-                if (this.thread != null)
-                {
-                    this.thread.Abort();
-                    this.thread = null;
-                }
-                this.thread = new Thread(() =>
-                {
-                    // 未指定根目录时
-                    if (string.IsNullOrEmpty(this.rootDirectory))
-                    {
-                        foreach (string driveName in this.driveNames)
-                        {
-                            this.FindFile(driveName);
-                            if (this.taskHasBeenFinished) break;
-                        }
-                    }
-                    else
-                    {
-                        // 统一改为加"\"
-                        this.rootDirectory = this.rootDirectory + (this.rootDirectory.EndsWith("\\") ? null : "\\");
-                        string driveName = System.IO.Path.GetPathRoot(this.rootDirectory);
-                        this.FindFile(driveName);
-                    }
-
-                    // 跨线程访问
-                    this.Dispatcher.Invoke(() =>
-                    {
-                        this.treeView.ItemsSource = this.root;
-                        this.EndSeach();
-                    });
-                });
-                this.thread.Start();
+                this.thread.Abort();
+                this.thread = null;
             }
+            this.thread = new Thread(() =>
+            {
+                // 未指定根目录时
+                if (string.IsNullOrEmpty(this.rootDirectory))
+                {
+                    foreach (string driveName in this.driveNames)
+                    {
+                        this.FindFile(driveName);
+                        if (this.taskHasBeenFinished) break;
+                    }
+                }
+                else
+                {
+                    // 统一改为加"\"
+                    this.rootDirectory = this.rootDirectory + (this.rootDirectory.EndsWith("\\") ? null : "\\");
+                    string driveName = System.IO.Path.GetPathRoot(this.rootDirectory);
+                    this.FindFile(driveName);
+                }
+
+                // 跨线程访问
+                this.Dispatcher.Invoke(() =>
+            {
+                this.treeView.ItemsSource = this.root;
+                this.EndSeach();
+            });
+            });
+            this.thread.Start();
         }
 
         /// <summary>
@@ -357,35 +368,56 @@ namespace FileSearch
         /// </summary>
         private void FindFile(string driveName)
         {
-            string[] fileFullNames = this.cache.Where(x => x.Key == driveName).FirstOrDefault().Value;
+            string[] fileFullNames = this.fileCache.Where(x => x.Key == driveName).FirstOrDefault().Value;
             // 如果一开始的后台线程没有加载完全，则继续加载
             if (fileFullNames == null)
             {
                 // 因为如前一次执行没有调到Cleanup方法则会报错，所有重新实例化一个扫描器
                 MFTScanner mftScanner = new MFTScanner();
                 fileFullNames = mftScanner.EnumerateFiles(driveName).ToArray();
-                this.cache.Add(driveName, fileFullNames);
+                this.fileCache.Add(driveName, fileFullNames);
             }
             if (!string.IsNullOrEmpty(this.rootDirectory))
             {
                 // 指定根目录时进行过滤
                 fileFullNames = fileFullNames.Where(x => x.StartsWith(this.rootDirectory)).ToArray();
             }
-            foreach (var fileFullName in fileFullNames)
+            string[] fullNames;
+            if (this.isOnlyFolder)
             {
-                string[] fileNameOrFolderNames = fileFullName.Split('\\').Skip(1).ToArray();
+                // 只检索文件夹而不展开
+                fullNames = this.folderCache.Where(x => x.Key == driveName).FirstOrDefault().Value;
+                if (fullNames == null)
+                {
+                    fullNames = fileFullNames.Select(x => Path.GetDirectoryName(x)).Distinct().ToArray();
+                    this.folderCache.Add(driveName, fullNames);
+                }
+            }
+            else
+            {
+                fullNames = fileFullNames;
+            }
+            foreach (var fullName in fullNames)
+            {
+                string[] fileNameOrFolderNames = fullName.Split('\\').Skip(1).ToArray();
                 foreach (string name in fileNameOrFolderNames)
                 {
                     if (this.IsMatch(name))
                     {
+                        string fullNameNew = fullName;
+                        if (this.isOnlyFolder)
+                        {
+                            // 只检索文件夹而不展开内部文件夹
+                            fullNameNew = Regex.Replace(fullName, $@"(?<={name}[^\\]*)\\.*", "");
+                        }
                         string[] nodeNames;
                         if (string.IsNullOrEmpty(this.rootDirectory))
                         {
-                            nodeNames = fileFullName.Split('\\');
+                            nodeNames = fullNameNew.Split('\\');
                         }
                         else
                         {
-                            nodeNames = fileFullName.Replace(this.rootDirectory, "").Split('\\');
+                            nodeNames = fullNameNew.Replace(this.rootDirectory, "").Split('\\');
                         }
                         this.CreatNodes(nodeNames, this.root, this.rootDirectory);
                         // 若只查找一个文件则结束查询 
@@ -450,6 +482,10 @@ namespace FileSearch
                 // 文件夹则继续创建子节点
                 node.ImageSource = "/Resources/Ico/folder.ico";
                 this.CreatNodes(nodeNames.Skip(1).ToArray(), node.ChildNodes, node.FullName);
+            }
+            else if (this.isOnlyFolder)
+            {
+                node.ImageSource = "/Resources/Ico/folder.ico";
             }
             else
             {
