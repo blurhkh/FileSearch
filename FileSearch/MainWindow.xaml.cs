@@ -70,11 +70,6 @@ namespace FileSearch
         private Thread thread;
 
         /// <summary>
-        /// 扫描器
-        /// </summary>
-        private MFTScanner mftScanner = new MFTScanner();
-
-        /// <summary>
         /// 目录缓存
         /// </summary>
         private Dictionary<string, string[]> cache;
@@ -98,6 +93,7 @@ namespace FileSearch
 
             this.thread = new Thread(() =>
             {
+                MFTScanner mftScanner = new MFTScanner();
                 this.driveNames
                        = DriveInfo.GetDrives()
                        .Where(x => x.DriveType == DriveType.Fixed)
@@ -215,8 +211,15 @@ namespace FileSearch
             this.rootDirectory = this.txtDirectory.Text.Trim();
 
             // 防止线程过早开启
+            // 注意，这个时候也有可能只是完成了C盘或者什么都没完成
             lock (this.cache)
             {
+                // 如果上一个线程尚未关闭
+                if (this.thread != null)
+                {
+                    this.thread.Abort();
+                    this.thread = null;
+                }
                 this.thread = new Thread(() =>
                 {
                     // 未指定根目录时
@@ -345,6 +348,16 @@ namespace FileSearch
             string fullName = (this.treeView.SelectedItem as Node).FullName;
             System.Diagnostics.Process.Start("Explorer.exe", fullName);
         }
+
+        /// <summary>
+        /// 双击节点打开
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void TreeViewItem_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            this.menuItemOpenFile_Click(null, null);
+        }
         #endregion
 
         #region 方法
@@ -355,10 +368,18 @@ namespace FileSearch
         private void FindFile(string driveName)
         {
             string[] fileFullNames = this.cache.Where(x => x.Key == driveName).FirstOrDefault().Value;
+            // 如果一开始的后台线程没有加载完全，则继续加载
+            if (fileFullNames == null)
+            {
+                // 因为如前一次执行没有调到Cleanup方法则会报错，所有重新实例化一个扫描器
+                MFTScanner mftScanner = new MFTScanner();
+                fileFullNames = mftScanner.EnumerateFiles(driveName).ToArray();
+                this.cache.Add(driveName, fileFullNames);
+            }
             if (!string.IsNullOrEmpty(this.rootDirectory))
             {
                 // 指定根目录时进行过滤
-                fileFullNames = fileFullNames.Where(x=>x.StartsWith(this.rootDirectory)).ToArray();
+                fileFullNames = fileFullNames.Where(x => x.StartsWith(this.rootDirectory)).ToArray();
             }
             foreach (var fileFullName in fileFullNames)
             {
@@ -463,20 +484,28 @@ namespace FileSearch
             }
             else
             {
-                // 此处不能释放该memoryStream，否则bitmapImage数据将消失
-                MemoryStream memoryStream = new MemoryStream();
-                System.Drawing.Bitmap bitmap = System.Drawing.Icon.ExtractAssociatedIcon(filePath).ToBitmap();
-                bitmap.Save(memoryStream, System.Drawing.Imaging.ImageFormat.Png);
-                bitmapImage = new BitmapImage();
-                bitmapImage.BeginInit();
-                bitmapImage.StreamSource = memoryStream;
-                bitmapImage.EndInit();
-                bitmapImage.Freeze();
-                this.associatedIcons.Add(new AssociatedIcon
+                try
                 {
-                    Extension = extension,
-                    ImageSource = bitmapImage
-                });
+                    // 此处不能释放该memoryStream，否则bitmapImage数据将消失
+                    MemoryStream memoryStream = new MemoryStream();
+                    System.Drawing.Bitmap bitmap = System.Drawing.Icon.ExtractAssociatedIcon(filePath).ToBitmap();
+                    bitmap.Save(memoryStream, System.Drawing.Imaging.ImageFormat.Png);
+                    bitmapImage = new BitmapImage();
+                    bitmapImage.BeginInit();
+                    bitmapImage.StreamSource = memoryStream;
+                    bitmapImage.EndInit();
+                    bitmapImage.Freeze();
+                    this.associatedIcons.Add(new AssociatedIcon
+                    {
+                        Extension = extension,
+                        ImageSource = bitmapImage
+                    });
+                }
+                catch
+                {
+                    // 有的图标可能无法获取
+                    return null;
+                }
             }
             return bitmapImage;
         }
