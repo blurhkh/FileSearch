@@ -1,6 +1,7 @@
 ﻿using FileSearch.Model;
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -22,7 +23,7 @@ namespace FileSearch
         /// <summary>
         /// 根节点
         /// </summary>
-        private List<Node> root;
+        private ConcurrentQueue<Node> root;
 
         /// <summary>
         /// 根目录
@@ -67,7 +68,7 @@ namespace FileSearch
         /// <summary>
         /// 系统图标集合
         /// </summary>
-        private List<AssociatedIcon> associatedIcons;
+        private ConcurrentQueue<AssociatedIcon> associatedIcons;
 
         /// <summary>
         /// 后台检索用线程
@@ -97,7 +98,7 @@ namespace FileSearch
             this.txtSearchCondition.Focus();
 
             // 只初期化一次，下次可从缓存中读取
-            this.associatedIcons = new List<AssociatedIcon>();
+            this.associatedIcons = new ConcurrentQueue<AssociatedIcon>();
 
             this.fileCache = new Dictionary<string, string[]>();
 
@@ -114,7 +115,8 @@ namespace FileSearch
                 {
                     string[] fileFullNames = mftScanner.EnumerateFiles(driveName).ToArray();
                     this.fileCache.Add(driveName, fileFullNames);
-                    string[] folderFullNames = fileFullNames.Select(x => Path.GetDirectoryName(x)).Distinct().ToArray();
+
+                    string[] folderFullNames = fileFullNames.AsParallel().Select(x => Path.GetDirectoryName(x)).Distinct().ToArray();
                     this.folderCache.Add(driveName, folderFullNames);
                 }
                 this.thread.Abort();
@@ -161,7 +163,7 @@ namespace FileSearch
         private void btnSearch_Click(object sender, RoutedEventArgs e)
         {
             // 重置数据
-            this.root = new List<Node>();
+            this.root = new ConcurrentQueue<Node>();
             this.rootDirectory = null;
             this.treeView.ItemsSource = null;
 
@@ -253,10 +255,13 @@ namespace FileSearch
 
                 // 跨线程访问
                 this.Dispatcher.Invoke(() =>
-            {
-                this.treeView.ItemsSource = this.root;
-                this.EndSeach();
-            });
+                {
+                    this.treeView.ItemsSource = this.root;
+                    this.EndSeach();
+                });
+
+                this.thread.Abort();
+                this.thread = null;
             });
             this.thread.Start();
         }
@@ -281,6 +286,12 @@ namespace FileSearch
         {
             this.root = null;
             this.EndSeach();
+            // 销毁后台线程
+            if (this.thread != null)
+            {
+                this.thread.Abort();
+                this.thread = null;
+            }
         }
 
         /// <summary>
@@ -290,7 +301,7 @@ namespace FileSearch
         /// <param name="e"></param>
         private void Window_Closed(object sender, EventArgs e)
         {
-            this.EndSeach();
+            this.btnCancel_Click(null, null);
         }
 
         /// <summary>
@@ -397,7 +408,11 @@ namespace FileSearch
             {
                 fullNames = fileFullNames;
             }
-            foreach (var fullName in fullNames)
+
+            // 测试
+            fullNames = fullNames.Where(x => x.Contains("1")).ToArray();
+
+            fullNames.AsParallel().ForAll(fullName =>
             {
                 string[] fileNameOrFolderNames = fullName.Split('\\').Skip(1).ToArray();
                 foreach (string name in fileNameOrFolderNames)
@@ -428,7 +443,7 @@ namespace FileSearch
                         };
                     }
                 }
-            }
+            });
         }
 
         /// <summary>
@@ -462,7 +477,7 @@ namespace FileSearch
         /// <param name="Nodes">当前层次的节点集合</param> 
         /// <param name="fileFullName">文件完整路径</param>
         /// <param name="parentFullName">父节点完整路径</param>
-        private void CreatNodes(string[] nodeNames, List<Node> nodes, string parentFullName)
+        private void CreatNodes(string[] nodeNames, ConcurrentQueue<Node> nodes, string parentFullName)
         {
             Node node = nodes.Where(x => x.Name == nodeNames[0]).FirstOrDefault();
             if (node == null)
@@ -474,7 +489,7 @@ namespace FileSearch
                     FullName = String.IsNullOrEmpty(parentFullName) ? nodeNames[0] :
                     (parentFullName + (parentFullName.EndsWith("\\") ? null : "\\") + nodeNames[0])
                 };
-                nodes.Add(node);
+                nodes.Enqueue(node);
             }
 
             if (nodeNames.Length > 1)
@@ -521,7 +536,7 @@ namespace FileSearch
                     bitmapImage.StreamSource = memoryStream;
                     bitmapImage.EndInit();
                     bitmapImage.Freeze();
-                    this.associatedIcons.Add(new AssociatedIcon
+                    this.associatedIcons.Enqueue(new AssociatedIcon
                     {
                         Extension = extension,
                         ImageSource = bitmapImage
@@ -561,12 +576,6 @@ namespace FileSearch
             if (this.root != null && this.root.Count() > 0)
             {
                 this.treeViewContextMenu.Visibility = Visibility.Visible;
-            }
-            // 销毁后台线程
-            if (this.thread != null)
-            {
-                this.thread.Abort();
-                this.thread = null;
             }
         }
         /// <summary>

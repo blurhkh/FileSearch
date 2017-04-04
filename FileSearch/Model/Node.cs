@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -8,7 +9,7 @@ namespace FileSearch.Model
 {
     class Node
     {
-        private List<Node> childNodes;
+        private ConcurrentQueue<Node> childNodes;
 
         /// <summary>
         /// 节点名
@@ -28,12 +29,12 @@ namespace FileSearch.Model
         /// <summary>
         /// 子节点集合
         /// </summary>
-        public List<Node> ChildNodes
+        public ConcurrentQueue<Node> ChildNodes
         {
             get
             {
                 if (this.childNodes == null)
-                    this.childNodes = new List<Node>();
+                    this.childNodes = new ConcurrentQueue<Node>();
                 return this.childNodes;
             }
         }
