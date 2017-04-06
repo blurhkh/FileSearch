@@ -68,15 +68,17 @@ namespace FileSearch.Model
             BitmapImage bitmapImage = null;
             try
             {
-                // 此处不能释放该memoryStream，否则bitmapImage数据将消失
-                MemoryStream memoryStream = new MemoryStream();
-                System.Drawing.Bitmap bitmap = System.Drawing.Icon.ExtractAssociatedIcon(filePath).ToBitmap();
-                bitmap.Save(memoryStream, System.Drawing.Imaging.ImageFormat.Png);
-                bitmapImage = new BitmapImage();
-                bitmapImage.BeginInit();
-                bitmapImage.StreamSource = memoryStream;
-                bitmapImage.EndInit();
-                bitmapImage.Freeze();
+                using (System.Drawing.Bitmap bitmap = System.Drawing.Icon.ExtractAssociatedIcon(filePath).ToBitmap())
+                {
+                    // 此处不能释放该memoryStream，否则bitmapImage数据将消失
+                    MemoryStream memoryStream = new MemoryStream();
+                    bitmap.Save(memoryStream, System.Drawing.Imaging.ImageFormat.Png);
+                    bitmapImage = new BitmapImage();
+                    bitmapImage.BeginInit();
+                    bitmapImage.StreamSource = memoryStream;
+                    bitmapImage.EndInit();
+                    bitmapImage.Freeze();
+                }
             }
             catch
             {
