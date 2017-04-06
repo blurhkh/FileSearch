@@ -11,6 +11,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Forms;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Collections.ObjectModel;
 
 namespace FileSearch
 {
@@ -22,7 +23,7 @@ namespace FileSearch
         /// <summary>
         /// 根节点
         /// </summary>
-        private List<Node> root;
+        private ObservableCollection<Node> root;
 
         /// <summary>
         /// 根目录
@@ -65,11 +66,6 @@ namespace FileSearch
         private bool taskHasBeenFinished;
 
         /// <summary>
-        /// 系统图标集合
-        /// </summary>
-        private List<AssociatedIcon> associatedIcons;
-
-        /// <summary>
         /// 后台检索用线程
         /// </summary>
         private Thread thread;
@@ -97,8 +93,6 @@ namespace FileSearch
             this.txtSearchCondition.Focus();
 
             // 只初期化一次，下次可从缓存中读取
-            this.associatedIcons = new List<AssociatedIcon>();
-
             this.fileCache = new Dictionary<string, string[]>();
 
             this.folderCache = new Dictionary<string, string[]>();
@@ -161,9 +155,9 @@ namespace FileSearch
         private void btnSearch_Click(object sender, RoutedEventArgs e)
         {
             // 重置数据
-            this.root = new List<Node>();
+            this.root = new ObservableCollection<Node>();
             this.rootDirectory = null;
-            this.treeView.ItemsSource = null;
+            this.treeView.ItemsSource = this.root;
 
             this.txtSearchCondition.ToolTip = null;
             this.txtSearchCondition.Foreground = Brushes.Black;
@@ -253,10 +247,9 @@ namespace FileSearch
 
                 // 跨线程访问
                 this.Dispatcher.Invoke(() =>
-            {
-                this.treeView.ItemsSource = this.root;
-                this.EndSeach();
-            });
+                {
+                    this.EndSeach();
+                });
             });
             this.thread.Start();
         }
@@ -462,10 +455,11 @@ namespace FileSearch
         /// <param name="Nodes">当前层次的节点集合</param> 
         /// <param name="fileFullName">文件完整路径</param>
         /// <param name="parentFullName">父节点完整路径</param>
-        private void CreatNodes(string[] nodeNames, List<Node> nodes, string parentFullName)
+        private void CreatNodes(string[] nodeNames, ObservableCollection<Node> nodes, string parentFullName)
         {
             Node node = nodes.Where(x => x.Name == nodeNames[0]).FirstOrDefault();
-            if (node == null)
+            bool isExsit = node != null;
+            if (!isExsit)
             {
                 // 若不存在则创建新节点
                 node = new Node
@@ -474,66 +468,25 @@ namespace FileSearch
                     FullName = String.IsNullOrEmpty(parentFullName) ? nodeNames[0] :
                     (parentFullName + (parentFullName.EndsWith("\\") ? null : "\\") + nodeNames[0])
                 };
-                nodes.Add(node);
             }
 
             if (nodeNames.Length > 1)
             {
                 // 文件夹则继续创建子节点
-                node.ImageSource = "/Resources/Ico/folder.ico";
                 this.CreatNodes(nodeNames.Skip(1).ToArray(), node.ChildNodes, node.FullName);
             }
-            else if (this.isOnlyFolder)
-            {
-                node.ImageSource = "/Resources/Ico/folder.ico";
-            }
-            else
+            else if (!this.isOnlyFolder)
             {
                 // 文件
-                node.ImageSource = this.GetAssociatedIcon(node.FullName);
+                node.IsFile = true;
             }
-        }
-
-        /// <summary>
-        /// 获取系统图标
-        /// </summary>
-        /// <param name="filePath">文件全路径</param>
-        private BitmapImage GetAssociatedIcon(string filePath)
-        {
-            BitmapImage bitmapImage;
-            string extension = System.IO.Path.GetExtension(filePath);
-            AssociatedIcon associatedIcon = this.associatedIcons.Where(x => x.Extension == extension).FirstOrDefault();
-            if (associatedIcon != null)
+            if (!isExsit)
             {
-                // 如果已经缓存过，则不再再次读取
-                bitmapImage = associatedIcon.ImageSource;
-            }
-            else
-            {
-                try
+                this.Dispatcher.Invoke(() =>
                 {
-                    // 此处不能释放该memoryStream，否则bitmapImage数据将消失
-                    MemoryStream memoryStream = new MemoryStream();
-                    System.Drawing.Bitmap bitmap = System.Drawing.Icon.ExtractAssociatedIcon(filePath).ToBitmap();
-                    bitmap.Save(memoryStream, System.Drawing.Imaging.ImageFormat.Png);
-                    bitmapImage = new BitmapImage();
-                    bitmapImage.BeginInit();
-                    bitmapImage.StreamSource = memoryStream;
-                    bitmapImage.EndInit();
-                    bitmapImage.Freeze();
-                    this.associatedIcons.Add(new AssociatedIcon
-                    {
-                        Extension = extension,
-                        ImageSource = bitmapImage
-                    });
-                }
-                catch
-                {
-                    // 有的图标可能无法获取
-                    return null;
-                }
+                    nodes.Add(node);
+                });
             }
-            return bitmapImage;
         }
 
         /// <summary>
