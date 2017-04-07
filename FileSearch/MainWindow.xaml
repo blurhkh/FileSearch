@@ -97,7 +97,7 @@
                                 </MenuItem>
                                 <MenuItem Name="menuItemOpenContainingFolder" Header="打开所在文件夹" Click="menuItemOpenContainingFolder_Click">
                                     <MenuItem.Icon>
-                                        <Image Source="/Resources/Ico/openContainingFolder.ico"/>
+                                        <Image Source="/Resources/Ico/openContainingFolder.ico" Width="16" Height="16"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
                             </ContextMenu>
