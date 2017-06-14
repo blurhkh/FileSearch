@@ -312,6 +312,7 @@ namespace FileSearch
             var treeView = this.VisualUpwardSearch(e.OriginalSource as DependencyObject) as System.Windows.Controls.TreeView;
             if (treeView != null)
             {
+                // 如果不是在Item上右键则隐藏
                 this.treeViewContextMenu.Visibility = Visibility.Collapsed;
                 e.Handled = true;
             }
